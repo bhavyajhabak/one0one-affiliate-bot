@@ -46,41 +46,23 @@ def send_welcome(message):
     )
     user_states[user_id] = {"step": None}
 
-# === TEXT HANDLER ===
+# === MENU HANDLER ===
 @bot.message_handler(func=lambda m: True)
 def menu_handler(message):
     user_id = str(message.from_user.id)
     text = message.text.strip()
+
     if user_id not in user_states:
         user_states[user_id] = {"step": None}
 
+    # === REGISTRATION ===
     if text == "📥 Register":
         existing_ids = sheet.col_values(3)
         if user_id in existing_ids:
-            bot.send_message(message.chat.id, "⚠ You're already registered.", reply_markup=main_menu())
+            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu())
         else:
             bot.send_message(message.chat.id, "Enter your full name:", reply_markup=ReplyKeyboardRemove())
             user_states[user_id] = {"step": "name"}
-
-    elif text == "📈 Daily Rank" or text == "🏆 All-Time Rank":
-        rows = sheet.get_all_values()[1:]
-        if text == "📈 Daily Rank":
-            leaderboard = sorted(rows, key=lambda x: int(x[10]) if x[10].isdigit() else 0, reverse=True)[:10]
-            title = "📈 Top 24H Earners:"
-        else:
-            leaderboard = sorted(rows, key=lambda x: int(x[6]) if x[6].isdigit() else 0, reverse=True)[:10]
-            title = "🏆 All-Time Champions:"
-
-        if not leaderboard:
-            bot.send_message(message.chat.id, f"""{title}\n\nNo data available.""", parse_mode='Markdown', reply_markup=main_menu())
-        else:
-            rank_msg = f"""{title}\n\n"""
-            for idx, row in enumerate(leaderboard, 1):
-                name = row[0]
-                sales = int(row[10]) if text == "📈 Daily Rank" and row[10].isdigit() else (int(row[6]) if row[6].isdigit() else 0)
-                earnings = sales * 20
-                rank_msg += f"{idx}. {name} — {sales} sales — ₹{earnings}\n"
-            bot.send_message(message.chat.id, rank_msg, parse_mode='Markdown', reply_markup=main_menu())
 
     elif text == "🧾 Sales":
         rows = sheet.get_all_values()
@@ -92,13 +74,15 @@ def menu_handler(message):
                 balance = row[8] if row[8].isdigit() else '0'
                 withdrawn = row[9] if row[9].isdigit() else '0'
                 bot.send_message(message.chat.id,
-                    f"""📊 Sales Summary
+                    f"""📊 *Sales Summary*
 
-🔖 Promo Code: {promo}
-📦 Total Sales: {sales}
+🔖 Promo Code: `{promo}`
+📦 Total Sales: *{sales}*
 💸 Total Earnings: ₹{earnings}
 💰 Available Balance: ₹{balance}
-📤 Withdrawn So Far: ₹{withdrawn}""",
+📤 Withdrawn So Far: ₹{withdrawn}
+
+👉 Use the *💸 Withdraw* button below when you’re ready to cash out!""",
                     parse_mode='Markdown', reply_markup=main_menu())
                 return
         bot.send_message(message.chat.id, "❌ Not registered. Tap 📥 Register.", reply_markup=main_menu())
@@ -115,7 +99,7 @@ def menu_handler(message):
 
     elif text == "🛠 Change Code":
         user_states[user_id] = {"step": "change_code"}
-        bot.send_message(message.chat.id, "🔤 Enter your new promo code base:", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, "🔤 Enter your new promo code base (we'll add 20 automatically):", reply_markup=ReplyKeyboardRemove())
 
     elif text == "🏦 Change UPI":
         user_states[user_id] = {"step": "change_upi"}
@@ -123,21 +107,43 @@ def menu_handler(message):
 
     elif text == "🗑 Delete Account":
         user_states[user_id] = {"step": "confirm_delete"}
-        bot.send_message(message.chat.id, "⚠ Type DELETE to confirm account deletion:", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, "⚠️ Type DELETE to confirm account deletion:", reply_markup=ReplyKeyboardRemove())
+
+    elif text == "📈 Daily Rank" or text == "🏆 All-Time Rank":
+        rows = sheet.get_all_values()[1:]
+        if text == "📈 Daily Rank":
+            leaderboard = sorted(rows, key=lambda x: int(x[10]) if x[10].isdigit() else 0, reverse=True)[:10]
+            title = "📈 *Top 24H Earners:*"
+        else:
+            leaderboard = sorted(rows, key=lambda x: int(x[6]) if x[6].isdigit() else 0, reverse=True)[:10]
+            title = "🏆 *All-Time Champions:*"
+
+        if not leaderboard:
+            bot.send_message(message.chat.id, f"{title}\n\nNo data available.", parse_mode='Markdown', reply_markup=main_menu())
+        else:
+            rank_msg = f"{title}\n\n"
+            for idx, row in enumerate(leaderboard, 1):
+                name = row[0]
+                sales = int(row[10]) if text == "📈 Daily Rank" and row[10].isdigit() else (int(row[6]) if row[6].isdigit() else 0)
+                earnings = sales * 20
+                rank_msg += f"{idx}. {name} — {sales} sales — ₹{earnings}\n"
+            bot.send_message(message.chat.id, rank_msg, parse_mode='Markdown', reply_markup=main_menu())
 
     elif text == "❓ Help":
         bot.send_message(message.chat.id,
-            "🤖 Bot Menu:\n\n📥 Register – Join the affiliate system\n🧾 Sales – View your sales\n💸 Withdraw – Request payout\n🛠 Change Code – Change your promo code\n🏦 Change UPI – Update your UPI ID\n🗑 Delete Account – Remove yourself\n❓ Help – Show this menu",
+            "🤖 *Bot Menu:*\n\n📥 Register – Join the affiliate system\n🧾 Sales – View your sales\n💸 Withdraw – Request payout\n🛠 Change Code – Change your promo code\n🏦 Change UPI – Update your UPI ID\n🗑 Delete Account – Remove yourself\n❓ Help – Show this menu",
             parse_mode='Markdown', reply_markup=main_menu())
 
+    # === ONGOING STATE-BASED ACTIONS ===
     elif user_states[user_id].get("step"):
         step = user_states[user_id]["step"]
+
         if step == "name":
-            user_states[user_id] = {"step": "code", "name": message.text.strip()}
+            user_states[user_id] = {"step": "code", "name": text}
             bot.send_message(message.chat.id, "Enter your custom promo code base (we'll add 20 automatically):")
+
         elif step == "code":
-            base = message.text.strip()
-            new_code = base + "20"
+            new_code = text + "20"
             existing = sheet.col_values(4)
             if new_code.lower() in [x.lower() for x in existing]:
                 bot.send_message(message.chat.id, "❌ Code already exists. Try another.")
@@ -145,19 +151,34 @@ def menu_handler(message):
             user_states[user_id]["code"] = new_code
             user_states[user_id]["step"] = "upi"
             bot.send_message(message.chat.id, "Enter your UPI ID:")
+
         elif step == "upi":
-            upi = message.text.strip()
             state = user_states[user_id]
             sheet.append_row([
                 state["name"], message.from_user.username or "N/A", user_id,
-                state["code"], upi, "Active", "0", "Pending", "0", "0", "0"])
+                state["code"], text, "Active", "0", "Pending", "0", "0", "0"
+            ])
             bot.send_message(message.chat.id,
-                f"✅ Registered!\nPromo Code: {state['code']}\nPayouts to: {upi}\n\n🎉 Share code & earn ₹20/sale.",
+                f"""✅ Registered!
+Promo Code: `{state['code']}`
+Payouts will be sent to: `{text}`
+
+🎉 You're now part of the One'0'One Affiliate Army!
+
+🔗 Your job is simple:
+1. Share your promo code
+2. Earn ₹20 per sale
+3. Withdraw anytime using the menu
+4. Sell products using our website: [onezeroone.dm2buy.com](https://onezeroone.dm2buy.com)
+5. Follow our brand page: [@onezeroone.life](https://instagram.com/onezeroone.life)
+
+💸 You'll be paid within 24 hours after delivery.""",
                 parse_mode='Markdown', reply_markup=main_menu())
             user_states[user_id] = {"step": None}
+
         elif step == "awaiting_withdraw":
             try:
-                req = int(message.text.strip())
+                req = int(text)
                 bal = user_states[user_id]["balance"]
                 if req > bal:
                     bot.send_message(message.chat.id, f"❌ You only have ₹{bal}. Enter a valid amount.")
@@ -167,19 +188,17 @@ def menu_handler(message):
                     rows = sheet.get_all_values()
                     for idx, row in enumerate(rows[1:], start=2):
                         if row[2] == user_id:
-                            updated_bal = bal - req
-                            withdrawn = int(row[9]) if row[9].isdigit() else 0
-                            sheet.update_cell(idx, 9, str(withdrawn + req))
-                            sheet.update_cell(idx, 8, str(updated_bal))
+                            sheet.update_cell(idx, 9, str(int(row[9]) + req))
+                            sheet.update_cell(idx, 8, str(bal - req))
                             bot.send_message(message.chat.id,
-                                f"✅ ₹{req} withdrawal requested. Remaining balance: ₹{updated_bal}", reply_markup=main_menu())
+                                f"✅ ₹{req} withdrawal requested. Remaining balance: ₹{bal - req}", reply_markup=main_menu())
                             break
                     user_states[user_id] = {"step": None}
             except ValueError:
                 bot.send_message(message.chat.id, "❌ Enter a valid number.")
+
         elif step == "change_code":
-            base = message.text.strip()
-            new_code = base + "20"
+            new_code = text + "20"
             existing = sheet.col_values(4)
             if new_code.lower() in [x.lower() for x in existing]:
                 bot.send_message(message.chat.id, "❌ Code already exists. Try another.")
@@ -191,8 +210,9 @@ def menu_handler(message):
                     bot.send_message(message.chat.id, f"✅ Promo code updated to {new_code}", reply_markup=main_menu())
                     break
             user_states[user_id] = {"step": None}
+
         elif step == "change_upi":
-            new_upi = message.text.strip()
+            new_upi = text
             rows = sheet.get_all_values()
             for idx, row in enumerate(rows[1:], start=2):
                 if row[2] == user_id:
@@ -200,8 +220,9 @@ def menu_handler(message):
                     bot.send_message(message.chat.id, f"✅ UPI updated to {new_upi}", reply_markup=main_menu())
                     break
             user_states[user_id] = {"step": None}
+
         elif step == "confirm_delete":
-            if message.text.strip().upper() == "DELETE":
+            if text.strip().upper() == "DELETE":
                 rows = sheet.get_all_values()
                 for idx, row in enumerate(rows[1:], start=2):
                     if row[2] == user_id:
@@ -213,7 +234,7 @@ def menu_handler(message):
             user_states[user_id] = {"step": None}
 
 # === FLASK SETUP FOR RENDER ===
-app = Flask(_name_)
+app = Flask(__name__)
 
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
@@ -242,7 +263,7 @@ reset_thread.daemon = True
 reset_thread.start()
 
 # === SET WEBHOOK AND RUN ===
-if _name_ == "_main_":
+if __name__ == "__main__":
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
     port = int(os.environ.get("PORT", 5000))
