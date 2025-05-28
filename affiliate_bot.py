@@ -12,6 +12,7 @@ TOKEN = '8125239683:AAGOxaitwYGBqM1xK_T2VbCBi6UKigUZd1Y'
 SHEET_NAME = 'one0one_affiliates'
 JSON_CREDENTIALS = 'one0one-affiliate-bot-b7bf5cb50744.json'
 WEBHOOK_URL = f"https://one0one-affiliate-bot.onrender.com/{TOKEN}"
+ADMINS = ['@zemo2801']  # Replace with actual admin Telegram ID(s)
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -25,7 +26,7 @@ sheet = client.open(SHEET_NAME).sheet1
 user_states = {}
 
 # === MAIN MENU ===
-def main_menu():
+def main_menu(is_admin=False):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
         KeyboardButton("📥 Register"), KeyboardButton("🧾 Sales"),
@@ -34,134 +35,67 @@ def main_menu():
         KeyboardButton("📈 Daily Rank"), KeyboardButton("🏆 All-Time Rank"),
         KeyboardButton("❓ Help")
     )
+    if is_admin:
+        markup.add(KeyboardButton("🛠 Admin Panel"))
     return markup
 
 # === START COMMAND ===
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
+    is_admin = user_id in ADMINS
     bot.send_message(message.chat.id,
         "👋 Welcome to the One'0'One Affiliate Bot!\nSelect an option below:",
-        reply_markup=main_menu()
+        reply_markup=main_menu(is_admin)
     )
     user_states[user_id] = {"step": None}
 
-# === MENU HANDLER ===
+# === HANDLE MENU COMMANDS ===
 @bot.message_handler(func=lambda m: True)
 def menu_handler(message):
     user_id = str(message.from_user.id)
     text = message.text.strip()
+    is_admin = user_id in ADMINS
 
     if user_id not in user_states:
         user_states[user_id] = {"step": None}
 
-    # === REGISTRATION ===
     if text == "📥 Register":
         existing_ids = sheet.col_values(3)
         if user_id in existing_ids:
-            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu())
+            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu(is_admin))
         else:
             bot.send_message(message.chat.id, "Enter your full name:", reply_markup=ReplyKeyboardRemove())
             user_states[user_id] = {"step": "name"}
 
-    elif text == "🧾 Sales":
-        rows = sheet.get_all_values()
-        for row in rows[1:]:
-            if row[2] == user_id:
-                promo = row[3]
-                sales = int(row[6]) if row[6].isdigit() else 0
-                earnings = sales * 20
-                balance = row[8] if row[8].isdigit() else '0'
-                withdrawn = row[9] if row[9].isdigit() else '0'
-                bot.send_message(message.chat.id,
-                    f"""📊 *Sales Summary*
+    elif user_states[user_id].get("step") == "name":
+        name = text
+        user_states[user_id]["name"] = name
+        user_states[user_id]["step"] = "code"
+        bot.send_message(message.chat.id, "Enter your custom promo code base (we'll add 20 automatically):")
 
-🔖 Promo Code: `{promo}`
-📦 Total Sales: *{sales}*
-💸 Total Earnings: ₹{earnings}
-💰 Available Balance: ₹{balance}
-📤 Withdrawn So Far: ₹{withdrawn}
+    elif user_states[user_id].get("step") == "code":
+        base = text
+        new_code = base + "20"
+        existing = sheet.col_values(4)
+        if new_code.lower() in [x.lower() for x in existing]:
+            bot.send_message(message.chat.id, "❌ Code already exists. Try another.")
+            return
+        user_states[user_id]["code"] = new_code
+        user_states[user_id]["step"] = "upi"
+        bot.send_message(message.chat.id, "Enter your UPI ID:")
 
-👉 Use the *💸 Withdraw* button below when you’re ready to cash out!""",
-                    parse_mode='Markdown', reply_markup=main_menu())
-                return
-        bot.send_message(message.chat.id, "❌ Not registered. Tap 📥 Register.", reply_markup=main_menu())
-
-    elif text == "💸 Withdraw":
-        rows = sheet.get_all_values()
-        for row in rows[1:]:
-            if row[2] == user_id:
-                balance = int(row[8]) if row[8].isdigit() else 0
-                user_states[user_id] = {"step": "awaiting_withdraw", "balance": balance}
-                bot.send_message(message.chat.id, f"💸 Your balance is ₹{balance}.\nHow much would you like to withdraw?", reply_markup=ReplyKeyboardRemove())
-                return
-        bot.send_message(message.chat.id, "❌ Not registered. Tap 📥 Register.", reply_markup=main_menu())
-
-    elif text == "🛠 Change Code":
-        user_states[user_id] = {"step": "change_code"}
-        bot.send_message(message.chat.id, "🔤 Enter your new promo code base (we'll add 20 automatically):", reply_markup=ReplyKeyboardRemove())
-
-    elif text == "🏦 Change UPI":
-        user_states[user_id] = {"step": "change_upi"}
-        bot.send_message(message.chat.id, "🏦 Enter your new UPI ID:", reply_markup=ReplyKeyboardRemove())
-
-    elif text == "🗑 Delete Account":
-        user_states[user_id] = {"step": "confirm_delete"}
-        bot.send_message(message.chat.id, "⚠️ Type DELETE to confirm account deletion:", reply_markup=ReplyKeyboardRemove())
-
-    elif text == "📈 Daily Rank" or text == "🏆 All-Time Rank":
-        rows = sheet.get_all_values()[1:]
-        if text == "📈 Daily Rank":
-            leaderboard = sorted(rows, key=lambda x: int(x[10]) if x[10].isdigit() else 0, reverse=True)[:10]
-            title = "📈 *Top 24H Earners:*"
-        else:
-            leaderboard = sorted(rows, key=lambda x: int(x[6]) if x[6].isdigit() else 0, reverse=True)[:10]
-            title = "🏆 *All-Time Champions:*"
-
-        if not leaderboard:
-            bot.send_message(message.chat.id, f"{title}\n\nNo data available.", parse_mode='Markdown', reply_markup=main_menu())
-        else:
-            rank_msg = f"{title}\n\n"
-            for idx, row in enumerate(leaderboard, 1):
-                name = row[0]
-                sales = int(row[10]) if text == "📈 Daily Rank" and row[10].isdigit() else (int(row[6]) if row[6].isdigit() else 0)
-                earnings = sales * 20
-                rank_msg += f"{idx}. {name} — {sales} sales — ₹{earnings}\n"
-            bot.send_message(message.chat.id, rank_msg, parse_mode='Markdown', reply_markup=main_menu())
-
-    elif text == "❓ Help":
+    elif user_states[user_id].get("step") == "upi":
+        upi = text
+        state = user_states[user_id]
+        sheet.append_row([
+            state["name"], message.from_user.username or "N/A", user_id,
+            state["code"], upi, "Active", "0", "Pending", "0", "0", "0"
+        ])
         bot.send_message(message.chat.id,
-            "🤖 *Bot Menu:*\n\n📥 Register – Join the affiliate system\n🧾 Sales – View your sales\n💸 Withdraw – Request payout\n🛠 Change Code – Change your promo code\n🏦 Change UPI – Update your UPI ID\n🗑 Delete Account – Remove yourself\n❓ Help – Show this menu",
-            parse_mode='Markdown', reply_markup=main_menu())
-
-    # === ONGOING STATE-BASED ACTIONS ===
-    elif user_states[user_id].get("step"):
-        step = user_states[user_id]["step"]
-
-        if step == "name":
-            user_states[user_id] = {"step": "code", "name": text}
-            bot.send_message(message.chat.id, "Enter your custom promo code base (we'll add 20 automatically):")
-
-        elif step == "code":
-            new_code = text + "20"
-            existing = sheet.col_values(4)
-            if new_code.lower() in [x.lower() for x in existing]:
-                bot.send_message(message.chat.id, "❌ Code already exists. Try another.")
-                return
-            user_states[user_id]["code"] = new_code
-            user_states[user_id]["step"] = "upi"
-            bot.send_message(message.chat.id, "Enter your UPI ID:")
-
-        elif step == "upi":
-            state = user_states[user_id]
-            sheet.append_row([
-                state["name"], message.from_user.username or "N/A", user_id,
-                state["code"], text, "Active", "0", "Pending", "0", "0", "0"
-            ])
-            bot.send_message(message.chat.id,
-                f"""✅ Registered!
+            f"""✅ Registered!
 Promo Code: `{state['code']}`
-Payouts will be sent to: `{text}`
+Payouts will be sent to: `{upi}`
 
 🎉 You're now part of the One'0'One Affiliate Army!
 
@@ -173,65 +107,77 @@ Payouts will be sent to: `{text}`
 5. Follow our brand page: [@onezeroone.life](https://instagram.com/onezeroone.life)
 
 💸 You'll be paid within 24 hours after delivery.""",
-                parse_mode='Markdown', reply_markup=main_menu())
-            user_states[user_id] = {"step": None}
+            parse_mode='Markdown', reply_markup=main_menu(is_admin))
+        user_states[user_id] = {"step": None}
 
-        elif step == "awaiting_withdraw":
-            try:
-                req = int(text)
-                bal = user_states[user_id]["balance"]
-                if req > bal:
-                    bot.send_message(message.chat.id, f"❌ You only have ₹{bal}. Enter a valid amount.")
-                elif req <= 0:
-                    bot.send_message(message.chat.id, "❌ Amount must be more than ₹0.")
-                else:
-                    rows = sheet.get_all_values()
-                    for idx, row in enumerate(rows[1:], start=2):
-                        if row[2] == user_id:
-                            sheet.update_cell(idx, 9, str(int(row[9]) + req))
-                            sheet.update_cell(idx, 8, str(bal - req))
-                            bot.send_message(message.chat.id,
-                                f"✅ ₹{req} withdrawal requested. Remaining balance: ₹{bal - req}", reply_markup=main_menu())
-                            break
-                    user_states[user_id] = {"step": None}
-            except ValueError:
-                bot.send_message(message.chat.id, "❌ Enter a valid number.")
+    elif text == "🛠 Admin Panel" and is_admin:
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("📋 Pending Withdrawals", "➕ Add Sales", "🔙 Back")
+        bot.send_message(message.chat.id, "🛠 *Admin Controls:*", parse_mode='Markdown', reply_markup=markup)
 
-        elif step == "change_code":
-            new_code = text + "20"
-            existing = sheet.col_values(4)
-            if new_code.lower() in [x.lower() for x in existing]:
-                bot.send_message(message.chat.id, "❌ Code already exists. Try another.")
-                return
+    elif text == "📋 Pending Withdrawals" and is_admin:
+        rows = sheet.get_all_values()[1:]
+        found = False
+        for row in rows:
+            if row[7].lower() == "requested":
+                found = True
+                name = row[0]
+                promo = row[3]
+                daily_sales = row[10]
+                balance = row[8]
+                withdraw = row[9]
+                bot.send_message(message.chat.id,
+                    f"👤 {name}\n🔖 Code: {promo}\n📅 Today: {daily_sales} sales\n💰 Balance: ₹{balance}\n💸 Withdraw: ₹{withdraw}",
+                    reply_markup=admin_payment_buttons(row[2]))
+        if not found:
+            bot.send_message(message.chat.id, "✅ No pending withdrawals.")
+
+    elif text == "➕ Add Sales" and is_admin:
+        user_states[user_id] = {"step": "add_sales_code"}
+        bot.send_message(message.chat.id, "Enter the promo code of the user:")
+
+    elif user_states[user_id].get("step") == "add_sales_code" and is_admin:
+        user_states[user_id]["promo"] = text
+        user_states[user_id]["step"] = "add_sales_number"
+        bot.send_message(message.chat.id, "How many products were sold?")
+
+    elif user_states[user_id].get("step") == "add_sales_number" and is_admin:
+        try:
+            count = int(text)
+            promo = user_states[user_id]["promo"]
             rows = sheet.get_all_values()
-            for idx, row in enumerate(rows[1:], start=2):
-                if row[2] == user_id:
-                    sheet.update_cell(idx, 4, new_code)
-                    bot.send_message(message.chat.id, f"✅ Promo code updated to {new_code}", reply_markup=main_menu())
+            for i in range(1, len(rows)):
+                if rows[i][3].lower() == promo.lower():
+                    total_sales = int(rows[i][6]) + count
+                    daily_sales = int(rows[i][10]) + count
+                    balance = int(rows[i][8]) + (count * 20)
+                    sheet.update_cell(i+1, 6, str(total_sales))
+                    sheet.update_cell(i+1, 10, str(daily_sales))
+                    sheet.update_cell(i+1, 8, str(balance))
+                    bot.send_message(message.chat.id, f"✅ Added {count} sales to {promo}")
                     break
-            user_states[user_id] = {"step": None}
+        except:
+            bot.send_message(message.chat.id, "❌ Invalid number.")
+        user_states[user_id] = {"step": None}
 
-        elif step == "change_upi":
-            new_upi = text
-            rows = sheet.get_all_values()
-            for idx, row in enumerate(rows[1:], start=2):
-                if row[2] == user_id:
-                    sheet.update_cell(idx, 5, new_upi)
-                    bot.send_message(message.chat.id, f"✅ UPI updated to {new_upi}", reply_markup=main_menu())
-                    break
-            user_states[user_id] = {"step": None}
+    elif text.startswith("✅ Mark Paid:") and is_admin:
+        target_id = text.split(":")[1].strip()
+        rows = sheet.get_all_values()
+        for i in range(1, len(rows)):
+            if rows[i][2] == target_id:
+                sheet.update_cell(i+1, 7, "Paid")
+                bot.send_message(target_id, "💸 Your withdrawal has been processed and the amount has been credited to your account.")
+                bot.send_message(message.chat.id, "✅ User notified.")
+                break
 
-        elif step == "confirm_delete":
-            if text.strip().upper() == "DELETE":
-                rows = sheet.get_all_values()
-                for idx, row in enumerate(rows[1:], start=2):
-                    if row[2] == user_id:
-                        sheet.delete_rows(idx)
-                        bot.send_message(message.chat.id, "✅ Account deleted.", reply_markup=main_menu())
-                        break
-            else:
-                bot.send_message(message.chat.id, "❌ Deletion cancelled.", reply_markup=main_menu())
-            user_states[user_id] = {"step": None}
+    else:
+        bot.send_message(message.chat.id, "❌ Invalid command or action. Please use the menu.", reply_markup=main_menu(is_admin))
+
+
+def admin_payment_buttons(user_id):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(f"✅ Mark Paid: {user_id}")
+    return markup
 
 # === FLASK SETUP FOR RENDER ===
 app = Flask(__name__)
