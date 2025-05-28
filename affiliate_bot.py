@@ -6,13 +6,14 @@ from flask import Flask, request
 import os
 import threading
 import time
+import re
 
 # === CONFIGURATION ===
 TOKEN = '8125239683:AAGOxaitwYGBqM1xK_T2VbCBi6UKigUZd1Y'
 SHEET_NAME = 'one0one_affiliates'
 JSON_CREDENTIALS = 'one0one-affiliate-bot-b7bf5cb50744.json'
 WEBHOOK_URL = f"https://one0one-affiliate-bot.onrender.com/{TOKEN}"
-ADMINS = ['7028343866']
+ADMINS = ['7028343866']  # Updated with your Telegram ID
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -54,28 +55,28 @@ def send_welcome(message):
 @bot.message_handler(func=lambda m: True)
 def menu_handler(message):
     user_id = str(message.from_user.id)
-    text = message.text.strip()
+    text = re.sub(r'[^\w\s]', '', message.text.strip()).lower()
     is_admin = user_id in ADMINS
 
     if user_id not in user_states:
         user_states[user_id] = {"step": None}
 
-    if "Register" in text:
+    if text == "register":
         existing_ids = sheet.col_values(3)
         if user_id in existing_ids:
-            bot.send_message(message.chat.id, "⚠ You're already registered.", reply_markup=main_menu(is_admin))
+            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu(is_admin))
         else:
             bot.send_message(message.chat.id, "Enter your full name:", reply_markup=ReplyKeyboardRemove())
             user_states[user_id] = {"step": "name"}
 
     elif user_states[user_id].get("step") == "name":
-        name = text
+        name = message.text.strip()
         user_states[user_id]["name"] = name
         user_states[user_id]["step"] = "code"
         bot.send_message(message.chat.id, "Enter your custom promo code base (we'll add 20 automatically):")
 
     elif user_states[user_id].get("step") == "code":
-        base = text
+        base = message.text.strip()
         new_code = base + "20"
         existing = sheet.col_values(4)
         if new_code.lower() in [x.lower() for x in existing]:
@@ -86,7 +87,7 @@ def menu_handler(message):
         bot.send_message(message.chat.id, "Enter your UPI ID:")
 
     elif user_states[user_id].get("step") == "upi":
-        upi = text
+        upi = message.text.strip()
         state = user_states[user_id]
         sheet.append_row([
             state["name"], message.from_user.username or "N/A", user_id,
@@ -94,8 +95,8 @@ def menu_handler(message):
         ])
         bot.send_message(message.chat.id,
             f"""✅ Registered!
-Promo Code: {state['code']}
-Payouts will be sent to: {upi}
+Promo Code: `{state['code']}`
+Payouts will be sent to: `{upi}`
 
 🎉 You're now part of the One'0'One Affiliate Army!
 
@@ -110,40 +111,40 @@ Payouts will be sent to: {upi}
             parse_mode='Markdown', reply_markup=main_menu(is_admin))
         user_states[user_id] = {"step": None}
 
-    elif "Withdraw" in text:
-        bot.send_message(message.chat.id, "Withdraw function goes here.")
+    elif text == "withdraw":
+        bot.send_message(message.chat.id, "💸 Withdraw feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Sales" in text:
-        bot.send_message(message.chat.id, "Sales function goes here.")
+    elif text == "sales":
+        bot.send_message(message.chat.id, "📈 Sales info coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Change Code" in text:
-        bot.send_message(message.chat.id, "Change code function goes here.")
+    elif text == "change code":
+        bot.send_message(message.chat.id, "🔧 Change code feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Change UPI" in text:
-        bot.send_message(message.chat.id, "Change UPI function goes here.")
+    elif text == "change upi":
+        bot.send_message(message.chat.id, "🏦 Change UPI feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Delete Account" in text:
-        bot.send_message(message.chat.id, "Delete account function goes here.")
+    elif text == "delete account":
+        bot.send_message(message.chat.id, "🗑 Delete account feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Daily Rank" in text:
-        bot.send_message(message.chat.id, "Daily rank function goes here.")
+    elif text == "daily rank":
+        bot.send_message(message.chat.id, "📊 Daily rank feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "All-Time Rank" in text:
-        bot.send_message(message.chat.id, "All-time rank function goes here.")
+    elif text == "alltime rank":
+        bot.send_message(message.chat.id, "🏆 All-time rank feature coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Help" in text:
-        bot.send_message(message.chat.id, "Help menu goes here.")
+    elif text == "help":
+        bot.send_message(message.chat.id, "ℹ️ Help section coming soon!", reply_markup=main_menu(is_admin))
 
-    elif "Admin Panel" in text and is_admin:
+    elif text == "admin panel" and is_admin:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("📋 Pending Withdrawals", "➕ Add Sales", "🔙 Back")
-        bot.send_message(message.chat.id, "🛠 Admin Controls:", parse_mode='Markdown', reply_markup=markup)
+        bot.send_message(message.chat.id, "🛠 *Admin Controls:*", parse_mode='Markdown', reply_markup=markup)
 
     else:
-        bot.send_message(message.chat.id, "❌ Invalid command or action. Please use the menu.")
+        bot.send_message(message.chat.id, "❌ Invalid command or action. Please use the menu.", reply_markup=main_menu(is_admin))
 
-# === FLASK SETUP ===
-app = Flask(_name_)
+# === FLASK SETUP FOR RENDER ===
+app = Flask(__name__)
 
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
@@ -172,7 +173,7 @@ reset_thread.daemon = True
 reset_thread.start()
 
 # === SET WEBHOOK AND RUN ===
-if _name_ == "_main_":
+if __name__ == "__main__":
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
     port = int(os.environ.get("PORT", 5000))
