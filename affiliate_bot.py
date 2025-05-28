@@ -12,7 +12,7 @@ TOKEN = '8125239683:AAGOxaitwYGBqM1xK_T2VbCBi6UKigUZd1Y'
 SHEET_NAME = 'one0one_affiliates'
 JSON_CREDENTIALS = 'one0one-affiliate-bot-b7bf5cb50744.json'
 WEBHOOK_URL = f"https://one0one-affiliate-bot.onrender.com/{TOKEN}"
-ADMINS = ['@zemo2801']  # Replace with actual admin Telegram ID(s)
+ADMINS = ['7028343866']  # Zemo's Telegram ID
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -172,7 +172,6 @@ Payouts will be sent to: `{upi}`
 
     else:
         bot.send_message(message.chat.id, "❌ Invalid command or action. Please use the menu.", reply_markup=main_menu(is_admin))
-
 
 def admin_payment_buttons(user_id):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
