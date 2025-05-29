@@ -51,31 +51,24 @@ def send_welcome(message):
     )
     user_states[user_id] = {"step": None}
 
-# === HANDLE MENU COMMANDS ===
+# === HANDLE ALL MESSAGES ===
 @bot.message_handler(func=lambda m: True)
-def menu_handler(message):
+def handle_all(message):
     user_id = str(message.from_user.id)
     text = message.text.strip()
     is_admin = user_id in ADMINS
-
     if user_id not in user_states:
         user_states[user_id] = {"step": None}
 
-    if text == "📥 Register":
-        existing_ids = sheet.col_values(3)
-        if user_id in existing_ids:
-            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu(is_admin))
-        else:
-            bot.send_message(message.chat.id, "Enter your full name:", reply_markup=ReplyKeyboardRemove())
-            user_states[user_id] = {"step": "name"}
+    step = user_states[user_id].get("step")
 
-    elif user_states[user_id].get("step") == "name":
-        name = text
-        user_states[user_id]["name"] = name
+    if step == "name":
+        user_states[user_id]["name"] = text
         user_states[user_id]["step"] = "code"
         bot.send_message(message.chat.id, "Enter your custom promo code base (we'll add 20 automatically):")
+        return
 
-    elif user_states[user_id].get("step") == "code":
+    elif step == "code":
         base = text
         new_code = base + "20"
         existing = sheet.col_values(4)
@@ -85,8 +78,9 @@ def menu_handler(message):
         user_states[user_id]["code"] = new_code
         user_states[user_id]["step"] = "upi"
         bot.send_message(message.chat.id, "Enter your UPI ID:")
+        return
 
-    elif user_states[user_id].get("step") == "upi":
+    elif step == "upi":
         upi = text
         state = user_states[user_id]
         sheet.append_row([
@@ -110,6 +104,16 @@ Payouts will be sent to: `{upi}`
 💸 You'll be paid within 24 hours after delivery.""",
             parse_mode='Markdown', reply_markup=main_menu(is_admin))
         user_states[user_id] = {"step": None}
+        return
+
+    # === HANDLE BUTTONS ===
+    if text == "📥 Register":
+        existing_ids = sheet.col_values(3)
+        if user_id in existing_ids:
+            bot.send_message(message.chat.id, "⚠️ You're already registered.", reply_markup=main_menu(is_admin))
+        else:
+            bot.send_message(message.chat.id, "Enter your full name:", reply_markup=ReplyKeyboardRemove())
+            user_states[user_id] = {"step": "name"}
 
     elif text == "❓ Help":
         bot.send_message(message.chat.id,
@@ -143,12 +147,12 @@ Payouts will be sent to: `{upi}`
         user_states[user_id] = {"step": "add_sales_code"}
         bot.send_message(message.chat.id, "Enter the promo code of the user:")
 
-    elif user_states[user_id].get("step") == "add_sales_code" and is_admin:
+    elif step == "add_sales_code" and is_admin:
         user_states[user_id]["promo"] = text
         user_states[user_id]["step"] = "add_sales_number"
         bot.send_message(message.chat.id, "How many products were sold?")
 
-    elif user_states[user_id].get("step") == "add_sales_number" and is_admin:
+    elif step == "add_sales_number" and is_admin:
         try:
             count = int(text)
             promo = user_states[user_id]["promo"]
